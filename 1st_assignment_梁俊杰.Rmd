@@ -1,0 +1,208 @@
+---
+title: "武汉市房价相关因素分析"
+CJKmainfont: Songti SC
+author: "梁俊杰"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  word_document:
+    toc: yes
+  html_document:
+    code_folding: show
+    fig_caption: yes
+    fig_width: 10
+    highlight: tango
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+---
+
+```{r setup, include = FALSE,echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE,error = FALSE, warning = FALSE, message = FALSE,
+                      out.width = "100%", split = FALSE, fig.align = "center")
+#load library
+library(tidyverse)
+library(kableExtra)
+library(lubridate)
+library(scales)
+library(plotly)
+library(patchwork)
+library(ggrepel)
+```
+
+# 你的主要发现
+
+1.  发现1：装修状况、房屋朝向能够显著的影响房价，精装修的房屋单价更高，朝南的房屋单价更高。
+
+2.  发现2：武汉市楼层越高,房价反而随之升高，与发达国家的房价更高住房的楼栋总楼层偏低相反。
+
+3.  发现3：武汉市房价的空间分布格局呈现多中心分布，高房价集聚的热点中心主要分布在武昌中北路和东湖东亭，以及汉口黄埔永清和CBD西北湖区域。
+
+# 数据介绍
+
+本报告**链家**数据获取方式如下：
+
+报告人在2023年9月12日获取了[链家武汉二手房网站](https://wh.lianjia.com/ershoufang/)数据。
+
+-   链家二手房网站默认显示100页，每页30套房产，因此本数据包括3000套房产信息；
+
+-   数据包括了页面可见部分的文本信息，具体字段及说明见作业说明。
+
+**说明：**数据仅用于教学；由于不清楚链家数据的展示规则，因此数据可能并不是武汉二手房市场的随机抽样，结论很可能有很大的偏差，甚至可能是错误的。
+
+```{r}
+# 载入数据和预处理
+
+lj<- read_csv("E:/OneDrive/02_file/07-R/01-script/2023-09-12_cleaned.csv")
+
+# EDA ---------------------------------------------------------------------
+
+## 如下语句可以解决画图中的中文显示问题，当然你可以用showtext包来解决
+
+theme_set(theme(text = element_text(family="Songti SC",size = 10))) #这里family设置成你系统中的中文字体名。
+View(lj)
+# 做一些数据预处理，比如把字符型变成factor。
+
+```
+
+# 数据概览
+
+数据表（lj)共包括`r names(lj)`等`r ncol(lj)`个变量,共`r nrow(lj)`行。表的前10行示例如下：
+
+```{r}
+lj %>% 
+  head(10) %>%
+  kable(caption = "武汉链家二手房") %>% 
+  kable_styling()
+```
+
+各变量的简短信息：
+
+```{r}
+glimpse(lj)
+```
+
+各变量的简短统计：
+
+```{r}
+summary(lj)
+```
+
+可以看到：
+
+-   直观结论1：武汉市房屋总价大部分集中在100-200万元之间。
+
+-   直观结论2：武汉市房屋单价在15000元/平方米左右。
+
+-   直观结论3：朝南的房屋最多。
+
+-   直观结论4：大部分房屋为两居室或三居室。
+
+# 探索性分析
+
+## 变量1的数值描述与图形
+
+发现：武汉市房屋总价均值为155.9万元，大部分集中在50-300万元之间，呈左偏态分布。
+
+-   发现1：3000个样本房屋整体房屋总价均值为155.9万元，中位数为137万元，最大值、最小值分别为11380万元和10.6万元。
+
+```{r}
+mean(lj$price_ttl)#计算均值  
+sd(lj$price_ttl)#计算标准差
+summary(lj$price_ttl)#查看摘要统计
+```
+
+-   发现2：房屋总价主要集中在50-300万元之间。
+
+```{r}
+hist(lj$price_ttl,breaks = 20,labels = T)#绘制直方图
+```
+
+## 变量2的数值描述与图形
+
+发现：装修状况、房屋朝向能够显著的影响房价，精装修的房屋单价更高，朝南的房屋单价更高。
+
+-   发现1：精装修的房屋相对最贵，简装其次，毛坯最便宜。
+
+```{r}
+ggplot(lj,aes(decoration,price_sqm))+
+  geom_boxplot()+
+  labs(title = "房屋单价与装修状况的关系")
+```
+
+-   发现2：朝南的房屋最多，其次为东南，单价4万元以上的房屋主要朝向均为朝南。
+
+```{r}
+ggplot(lj,aes(directions1,price_sqm))+
+  geom_point(position = "jitter")+
+  labs(title = "房屋单价与房屋朝向的关系")
+```
+
+## 探索问题1
+
+发现：房屋单价与楼栋总层数和建筑面积均存在相关关系，和楼栋总层数呈单调正相关；当建筑面积小于290平方米时，房屋单价与建筑面积正相关，当建筑面积大于290平方米时呈负相关。
+
+-   发现1：房屋单价与楼栋总层数呈正相关，楼栋总楼层越高，房价反而越贵。
+
+```{r}
+ggplot(lj,aes(property_t_height,price_sqm))+
+  geom_smooth(se = F)+
+  labs(title = "房屋单价与楼栋总层数的关系")
+```
+
+-   发现2：当建筑面积小于290平方米时，房屋单价与建筑面积正相关，当建筑面积大于290平方米时呈负相关。
+
+```{r}
+ggplot(lj,aes(building_area,price_sqm))+
+  geom_smooth(se = F)+
+  labs(title = "房屋单价与建筑面积的关系")
+```
+
+## 探索问题2
+
+发现：板塔结合的建筑形式更适合建高层，但超过60层的超高层均为板楼；平房层数均在35层以下，且样本量较少，判断平房可能为其他建筑形式的顶楼。
+
+-   发现1：板塔结合的平均楼层相对更高，但超过60层的超高层均为板楼。
+
+```{r}
+ggplot(lj,aes(property_style,property_t_height))+
+  geom_boxplot()+
+  labs(title = "建筑形式与楼栋总层数的关系")
+```
+
+-   发现2：建筑形式与建筑面积不存在相关关系。
+
+```{r}
+lj1 <- lj %>% 
+  filter(building_area <= 300)
+ggplot(lj1,aes(property_style,building_area))+
+  geom_boxplot()+
+  labs(title = "建筑形式与建筑面积的关系")
+```
+
+## 探索问题3
+
+发现：武汉市房价的空间分布格局呈现多中心分布，高房价集聚的热点中心主要分布在武昌中北路和东湖东亭，以及汉口黄埔永清和CBD西北湖区域。
+
+-   发现1：单价最贵的10套房子中有6套在中北路，2套在黄埔永清，剩下中南丁字桥和CBD西北湖各一套。
+
+```{r}
+lj2 <- arrange(lj,desc(price_sqm))
+View(lj2)
+```
+
+-   发现2：总价最贵的10套房子中东湖东亭、CBD西北湖和卓刀泉各2套，剩下金银湖、黄埔永清、三阳路和积玉桥各一套。
+
+```{r}
+lj3 <- arrange(lj,desc(price_ttl))
+View(lj3)
+```
+
+------------------------------------------------------------------------
+
+# 发现总结
+
+武汉市楼层越高,房价反而随之升高，与发达国家的房价更高住房的楼栋总楼层偏低相反。因为总楼层较高的住宅一般都趋向于集聚在城市中心的一环线内,以及长江边和东湖这些经济发达地区,虽然导致这些地区的高居住密度,但是相应的交通条件、配套设施等比其他区域更加发达和完备,所以总楼层变量对城市房价呈现出的是正向作用。
+
+武汉市房价的空间分布格局呈现多中心分布，高房价集聚的热点中心主要分布在武昌中北路和东湖东亭，以及汉口黄埔永清和CBD西北湖区域。同时装修状况、房屋朝向能够显著的影响房价，精装修的房屋单价更高，朝南的房屋单价更高。
